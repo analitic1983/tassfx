@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace common\modules\profile\populators;
 
 use common\modules\profile\models\ProfileBankCard;

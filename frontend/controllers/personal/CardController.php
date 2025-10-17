@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace frontend\controllers\personal;
 
 use common\components\UploadedFile;
@@ -8,6 +10,7 @@ use common\exceptions\ModelNotFoundException;
 use common\exceptions\NoAccessException;
 use common\exceptions\NoAccessForUserException;
 use common\exceptions\ValidationException;
+use common\modules\file\exceptions\FileConnectorException;
 use common\modules\profile\factories\ProfileBankCardFactory;
 use common\modules\profile\helpers\BankCardUrlHelper;
 use common\modules\profile\helpers\ProfileUrlHelper;
@@ -16,26 +19,27 @@ use common\modules\profile\services\BankCardService;
 use Da\User\Filter\AccessRuleFilter;
 use frontend\controllers\AppController;
 use Yii;
+use yii\base\InvalidConfigException;
 use yii\filters\AccessControl;
 use yii\filters\VerbFilter;
 use yii\web\Response;
 
 class CardController extends AppController
 {
-    protected ProfileBankCardFactory $bankCardFactory;
-    protected BankCardService        $bankCardService;
-
-    public function __construct($id, $module, $config = [], ProfileBankCardFactory $profileBankCardRepository, BankCardService $bankCardService)
+    public function __construct(
+        $id,
+        $module,
+        $config = [],
+        private readonly ProfileBankCardFactory $bankCardFactory,
+        private readonly BankCardService $bankCardService)
     {
-        $this->bankCardFactory = $profileBankCardRepository;
-        $this->bankCardService = $bankCardService;
         parent::__construct($id, $module, $config);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function behaviors()
+    public function behaviors(): array
     {
         return [
             'access' => [
@@ -61,14 +65,17 @@ class CardController extends AppController
                     'save'               => ['POST'],
                     'delete'             => ['POST'],
                     'upload-front-photo' => ['POST'],
-                    'delete-front-photo' => ['POST']
+                    'delete-front-photo' => ['POST'],
+                    'upload-back-photo'  => ['POST'],
+                    'delete-back-photo'  => ['POST']
                 ]
             ]
         ];
     }
 
     /**
-     * @throws \yii\base\InvalidConfigException
+     * @return string
+     * @throws InvalidConfigException
      */
     public function actionCreateModal(): string
     {
@@ -79,19 +86,20 @@ class CardController extends AppController
     }
 
     /**
+     * @return string
      * @throws ModelNotFoundException
      * @throws NoAccessForUserException
      */
     public function actionUpdateModal($uuid): string
     {
-        $bankCard = ProfileBankCard::findByPkOrFail($uuid);
-        $bankCard->checkIsOwnerOrFail($this->getCurrentUser());
+        $bankCard = $this->getBankCard($uuid);
         return $this->renderAdaptive('updateModal', [
             'bankCard' => $bankCard,
         ]);
     }
 
     /**
+     * @return Response
      * @throws ModelNotFoundException
      * @throws InvalidModelException
      * @throws ValidationException
@@ -101,26 +109,31 @@ class CardController extends AppController
     public function actionSave(string $uuid): Response
     {
         $this->response->format = Response::FORMAT_JSON;
-        $bankCard = $this->bankCardService->getOrCreate($uuid, $this->getCurrentUser());
+        $bankCard = $this->getBankCard($uuid);
+        $bankCard->checkIsAllowChangeOrFail();
         $this->bankCardService->updateByData($bankCard, Yii::$app->request->post());
-        Yii::$app->session->setFlash('success', \Yii::t('frontend', 'Bank card saved'));
+        Yii::$app->session->setFlash('success', Yii::t('frontend', 'Bank card saved'));
         return $this->jsonSuccess([
             'reload' => true,
         ]);
     }
 
     /**
+     * @return Response
      * @throws ModelNotFoundException
      * @throws NoAccessForUserException
+     * @throws NoAccessException
      */
     public function actionDelete(string $uuid): Response
     {
         $this->response->format = Response::FORMAT_JSON;
-        $bankCard = ProfileBankCard::findByPkOrFail($uuid);
-        $bankCard->checkIsOwnerOrFail($this->getCurrentUser());
+        $bankCard = $this->getBankCard($uuid);
+        $bankCard->checkIsAllowChangeOrFail();
         $this->bankCardService->deleteCard($bankCard);
-        Yii::$app->session->setFlash('success', \Yii::t('frontend', 'Bank card deleted'));
-        return $this->redirect(ProfileUrlHelper::showProfile('bankCards'));
+        Yii::$app->session->setFlash('success', Yii::t('frontend', 'Bank card deleted'));
+        return $this->jsonSuccess([
+            'redirect' => ProfileUrlHelper::showProfileBankCards()
+        ]);
     }
 
 
@@ -128,10 +141,9 @@ class CardController extends AppController
      * @throws ModelNotFoundException
      * @throws NoAccessForUserException
      */
-    public function actionFrontPhoto(string $bankCardUuid): void
+    public function actionFrontPhoto(string $uuid): void
     {
-        $bankCard = ProfileBankCard::findByPkOrFail($bankCardUuid);
-        $bankCard->checkIsOwnerOrFail($this->getCurrentUser());
+        $bankCard = $this->getBankCard($uuid);
         $file = $this->bankCardService->getFrontFile($bankCard);
 
         Yii::$app->response->headers->set('Cache-Control', 'max-age=360');
@@ -143,19 +155,20 @@ class CardController extends AppController
      * @throws InvalidModelException
      * @throws NoAccessForUserException
      * @throws ValidationException
-     * @throws \common\modules\file\exceptions\FileConnectorException
+     * @throws FileConnectorException
      * @throws \yii\base\InvalidConfigException
      */
     public function actionUploadFrontPhoto(): Response
     {
         $this->response->format = Response::FORMAT_JSON;
         $bankCardUuid = Yii::$app->request->post('bankCardUuid');
-        $bankCard = $this->bankCardService->getOrCreate($bankCardUuid, $this->getCurrentUser());
-        $file = UploadedFile::getInstance($bankCard, 'frontPhoto');
-        if (!$file) {
+        $file = UploadedFile::getInstanceByName('frontPhoto');
+        if ($file === null) {
             // Strange design from FileInput::widget: run upload without file?
             return $this->jsonSuccessMessage('No files uploaded');
         }
+        $bankCard = $this->getBankCard($bankCardUuid);
+        $bankCard->checkIsAllowChangeOrFail();
         $this->bankCardService->setFrontFile($bankCard, $file);
         return $this->jsonSuccess([
             'initialPreview'       => [BankCardUrlHelper::viewFrontPhotoUrl($bankCard)],
@@ -171,25 +184,34 @@ class CardController extends AppController
         ]);
     }
 
+    /**
+     * @return Response
+     * @throws InvalidModelException
+     * @throws NoAccessForUserException
+     * @throws ValidationException
+     * @throws FileConnectorException
+     * @throws \yii\base\InvalidConfigException
+     */
     public function actionDeleteFrontPhoto(): Response
     {
         $this->response->format = Response::FORMAT_JSON;
         $bankCardUuid = Yii::$app->request->post('bankCardUuid');
-        $bankCard = ProfileBankCard::findByPkOrFail($bankCardUuid);
+        $bankCard = $this->getBankCard($bankCardUuid);
+        $bankCard->checkIsAllowChangeOrFail();
         $this->bankCardService->deleteFrontPhoto($bankCard);
         return $this->jsonSuccessMessage(Yii::t('frontend', "Deleted"));
     }
 
     /**
      * @throws ModelNotFoundException
-     * @throws \common\modules\file\exceptions\FileConnectorException
+     * @throws FileConnectorException
      * @throws NoAccessForUserException
      */
-    public function actionBackPhoto(string $bankCardUuid)
+    public function actionBackPhoto(string $bankCardUuid): void
     {
-        $bankCard = ProfileBankCard::findByPkOrFail($bankCardUuid);
-        $bankCard->checkIsOwnerOrFail($this->getCurrentUser());
+        $bankCard = $this->getBankCard($bankCardUuid);
         $file = $this->bankCardService->getBackFile($bankCard);
+        Yii::$app->response->headers->set('Cache-Control', 'max-age=360');
         Yii::$app->response->sendFile($file->getPath(), $file->getFileName(), ['inline' => true]);
     }
 
@@ -198,19 +220,20 @@ class CardController extends AppController
      * @throws InvalidModelException
      * @throws NoAccessForUserException
      * @throws ValidationException
-     * @throws \common\modules\file\exceptions\FileConnectorException
+     * @throws FileConnectorException
      * @throws \yii\base\InvalidConfigException
      */
     public function actionUploadBackPhoto(): Response
     {
         $this->response->format = Response::FORMAT_JSON;
         $bankCardUuid = Yii::$app->request->post('bankCardUuid');
-        $bankCard = $this->bankCardService->getOrCreate($bankCardUuid, $this->getCurrentUser());
-        $file = UploadedFile::getInstance($bankCard, 'backPhoto');
-        if (!$file) {
+        $file = UploadedFile::getInstanceByName('backPhoto');
+        if ($file === null) {
             // Strange design from FileInput::widget: run upload without file?
             return $this->jsonSuccessMessage('No files uploaded');
         }
+        $bankCard = $this->getBankCard($bankCardUuid);
+        $bankCard->checkIsAllowChangeOrFail();
         $this->bankCardService->setBackFile($bankCard, $file);
         return $this->jsonSuccess([
             'initialPreview'       => [BankCardUrlHelper::viewBackPhotoUrl($bankCard)],
@@ -226,12 +249,33 @@ class CardController extends AppController
         ]);
     }
 
+    /**
+     * @return Response
+     * @throws InvalidModelException
+     * @throws NoAccessForUserException
+     * @throws ValidationException
+     * @throws \common\modules\file\exceptions\FileConnectorException
+     * @throws \yii\base\InvalidConfigException
+     */
     public function actionDeleteBackPhoto(): Response
     {
         $this->response->format = Response::FORMAT_JSON;
         $bankCardUuid = Yii::$app->request->post('bankCardUuid');
-        $bankCard = ProfileBankCard::findByPkOrFail($bankCardUuid);
+        $bankCard = $this->getBankCard($bankCardUuid);
+        $bankCard->checkIsAllowChangeOrFail();
         $this->bankCardService->deleteBackPhoto($bankCard);
         return $this->jsonSuccessMessage(Yii::t('frontend', "Deleted"));
+    }
+
+    /**
+     * @return ProfileBankCard
+     * @throws ModelNotFoundException
+     * @throws NoAccessForUserException
+     */
+    private function getBankCard(string  $uuid): ProfileBankCard
+    {
+        $bankCard = ProfileBankCard::findByPkOrFail($uuid);
+        $bankCard->checkIsOwnerOrFail($this->getCurrentUser());
+        return $bankCard;
     }
 }

@@ -1,7 +1,8 @@
 <?php
 
-namespace common\modules\profile\services;
+declare(strict_types=1);
 
+namespace common\modules\profile\services;
 
 use common\components\FilesConnector;
 use common\helpers\DateHelper;
@@ -12,30 +13,24 @@ use common\modules\file\managers\FileCacheManager;
 use common\modules\file\models\File;
 use common\modules\profile\factories\ProfileBankCardFactory;
 use common\modules\profile\models\ProfileBankCard;
+use common\modules\profile\models\ProfileBankCardStatusEnum;
 use common\modules\profile\populators\BankCardPopulator;
 use common\modules\profile\pushers\ClientProfileCrmPusher;
 use Yii;
 use yii\base\UserException;
 use yii\web\UploadedFile;
 
-class BankCardService
+readonly class BankCardService
 {
-    protected BankCardPopulator      $bankCardPopulator;
-    protected ProfileBankCardFactory $bankCardFactory;
-    protected FileCacheManager       $fileCacheManager;
-    protected ClientProfileCrmPusher $crmBankCardPusher;
-
     public function __construct(
-        BankCardPopulator      $bankCardPopulator,
-        ProfileBankCardFactory $bankCardFactory,
-        FileCacheManager       $fileCacheManager,
-        ClientProfileCrmPusher $crmBankCardPusher
+        private BankCardPopulator      $bankCardPopulator,
+        private ProfileBankCardFactory $bankCardFactory,
+        private FileCacheManager       $fileCacheManager,
+        private ClientProfileCrmPusher $crmBankCardPusher,
+        private FilesConnector         $filesServer,
+        private TimeService            $timeService,
     )
     {
-        $this->bankCardPopulator = $bankCardPopulator;
-        $this->bankCardFactory = $bankCardFactory;
-        $this->fileCacheManager = $fileCacheManager;
-        $this->crmBankCardPusher = $crmBankCardPusher;
     }
 
     /**
@@ -50,8 +45,8 @@ class BankCardService
      */
     public function updateByData(ProfileBankCard $bankCard, array $data): void
     {
-        $this->bankCardPopulator->populate($bankCard, Yii::$app->request->post());
-        $bankCard->status = ProfileBankCard::STATUS_WAIT_FOR_APPROVE;
+        $this->bankCardPopulator->populate($bankCard, $data);
+        $bankCard->status = ProfileBankCardStatusEnum::STATUS_WAIT_FOR_APPROVE->value;
         $this->update($bankCard);
     }
 
@@ -66,7 +61,7 @@ class BankCardService
      */
     public function update(ProfileBankCard $bankCard): void
     {
-        $bankCard->updated_at = DateHelper::now();
+        $bankCard->updated_at = $this->timeService->now();
         $bankCard->validateOrFail();
         $bankCard->saveOrFail();
         if (!$bankCard->isDraft()){
@@ -104,12 +99,11 @@ class BankCardService
             return $cachedFile;
         }
 
-        $filesServer = new FilesConnector();
-        $dir = $filesServer->createDir('user-' . sprintf('%010d', $bankCard->user->id));
+        $dir = $this->filesServer->createDir('user-' . sprintf('%010d', $bankCard->user->id));
         if (!$dir) {
             throw new FileConnectorException('Not exists: '.$dir);
         }
-        $fileContent = $filesServer->viewFile($dir, $fileName);
+        $fileContent = $this->filesServer->viewFile($dir, $fileName);
         $file = $this->fileCacheManager->storeUrlInCache($fileContent, $fileName);
         return $file;
     }
@@ -137,9 +131,8 @@ class BankCardService
 
         $fileName = 'FrontCard_' . $bankCard->uuid . '_' . md5($file->getBaseName()) . '.' . $file->extension;
 
-        $filesServer = new FilesConnector();
-        $dir = $filesServer->createDir('user-' . sprintf('%010d', $bankCard->user->id), $bankCard->user->email);
-        $response = $filesServer->uploadFile($file, $dir, $fileName);
+        $dir = $this->filesServer->createDir('user-' . sprintf('%010d', $bankCard->user->id), $bankCard->user->email);
+        $response = $this->filesServer->uploadFile($file, $dir, $fileName);
 
         if (empty($response->name)) {
             throw new FileConnectorException('Can\'t upload front card file');
@@ -162,9 +155,8 @@ class BankCardService
             // Already deleted;
             return;
         }
-        $filesServer = new FilesConnector();
-        $dir = $filesServer->createDir('user-' . sprintf('%010d', $bankCard->user->id));
-        $filesServer->deleteFile($dir, $bankCard->front_photo_file);
+        $dir = $this->filesServer->createDir('user-' . sprintf('%010d', $bankCard->user->id));
+        $this->filesServer->deleteFile($dir, $bankCard->front_photo_file);
         $bankCard->front_photo_file = "";
         $this->update($bankCard);
     }
@@ -193,9 +185,8 @@ class BankCardService
 
         $fileName = 'BackCard_' . $bankCard->uuid . '_' . md5($file->getBaseName()) . '.' . $file->extension;
 
-        $filesServer = new FilesConnector();
-        $dir = $filesServer->createDir('user-' . sprintf('%010d', $bankCard->user->id), $bankCard->user->email);
-        $response = $filesServer->uploadFile($file, $dir, $fileName);
+        $dir = $this->filesServer->createDir('user-' . sprintf('%010d', $bankCard->user->id), $bankCard->user->email);
+        $response = $this->filesServer->uploadFile($file, $dir, $fileName);
 
         if (empty($response->name)) {
             throw new FileConnectorException('Can\'t upload back card file');
@@ -218,9 +209,8 @@ class BankCardService
             // Already deleted;
             return;
         }
-        $filesServer = new FilesConnector();
-        $dir = $filesServer->createDir('user-' . sprintf('%010d', $bankCard->user->id));
-        $filesServer->deleteFile($dir, $bankCard->back_photo_file);
+        $dir = $this->filesServer->createDir('user-' . sprintf('%010d', $bankCard->user->id));
+        $this->filesServer->deleteFile($dir, $bankCard->back_photo_file);
         $bankCard->back_photo_file = "";
         $this->update($bankCard);
     }
@@ -234,7 +224,7 @@ class BankCardService
      */
     public function deleteCard(ProfileBankCard $bankCard): void
     {
-        $bankCard->status = ProfileBankCard::STATUS_DELETED;
+        $bankCard->status = ProfileBankCardStatusEnum::STATUS_DELETED;
         $this->update($bankCard);
     }
 

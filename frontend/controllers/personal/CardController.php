@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace frontend\controllers\personal;
 
 use common\components\UploadedFile;
@@ -22,13 +24,13 @@ use yii\web\Response;
 
 class CardController extends AppController
 {
-    protected ProfileBankCardFactory $bankCardFactory;
-    protected BankCardService        $bankCardService;
-
-    public function __construct($id, $module, $config = [], ProfileBankCardFactory $profileBankCardRepository, BankCardService $bankCardService)
+    public function __construct(
+        $id,
+        $module,
+        $config = [],
+        private readonly ProfileBankCardFactory $bankCardFactory,
+        private readonly BankCardService $bankCardService)
     {
-        $this->bankCardFactory = $profileBankCardRepository;
-        $this->bankCardService = $bankCardService;
         parent::__construct($id, $module, $config);
     }
 
@@ -61,7 +63,9 @@ class CardController extends AppController
                     'save'               => ['POST'],
                     'delete'             => ['POST'],
                     'upload-front-photo' => ['POST'],
-                    'delete-front-photo' => ['POST']
+                    'delete-front-photo' => ['POST'],
+                    'upload-back-photo'  => ['POST'],
+                    'delete-back-photo'  => ['POST']
                 ]
             ]
         ];
@@ -120,7 +124,9 @@ class CardController extends AppController
         $bankCard->checkIsOwnerOrFail($this->getCurrentUser());
         $this->bankCardService->deleteCard($bankCard);
         Yii::$app->session->setFlash('success', \Yii::t('frontend', 'Bank card deleted'));
-        return $this->redirect(ProfileUrlHelper::showProfile('bankCards'));
+        return $this->jsonSuccess([
+            'redirect' => ProfileUrlHelper::showProfile('bankCards')
+        ]);
     }
 
 
@@ -176,6 +182,7 @@ class CardController extends AppController
         $this->response->format = Response::FORMAT_JSON;
         $bankCardUuid = Yii::$app->request->post('bankCardUuid');
         $bankCard = ProfileBankCard::findByPkOrFail($bankCardUuid);
+        $bankCard->checkIsOwnerOrFail($this->getCurrentUser());
         $this->bankCardService->deleteFrontPhoto($bankCard);
         return $this->jsonSuccessMessage(Yii::t('frontend', "Deleted"));
     }
@@ -231,6 +238,7 @@ class CardController extends AppController
         $this->response->format = Response::FORMAT_JSON;
         $bankCardUuid = Yii::$app->request->post('bankCardUuid');
         $bankCard = ProfileBankCard::findByPkOrFail($bankCardUuid);
+        $bankCard->checkIsOwnerOrFail($this->getCurrentUser());
         $this->bankCardService->deleteBackPhoto($bankCard);
         return $this->jsonSuccessMessage(Yii::t('frontend', "Deleted"));
     }

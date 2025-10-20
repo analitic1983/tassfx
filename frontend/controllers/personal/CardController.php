@@ -192,11 +192,12 @@ class CardController extends AppController
      * @throws \common\modules\file\exceptions\FileConnectorException
      * @throws NoAccessForUserException
      */
-    public function actionBackPhoto(string $bankCardUuid)
+    public function actionBackPhoto(string $bankCardUuid): void
     {
         $bankCard = ProfileBankCard::findByPkOrFail($bankCardUuid);
         $bankCard->checkIsOwnerOrFail($this->getCurrentUser());
         $file = $this->bankCardService->getBackFile($bankCard);
+        Yii::$app->response->headers->set('Cache-Control', 'max-age=360');
         Yii::$app->response->sendFile($file->getPath(), $file->getFileName(), ['inline' => true]);
     }
 

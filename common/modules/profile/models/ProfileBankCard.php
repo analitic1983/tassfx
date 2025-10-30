@@ -84,8 +84,7 @@ class ProfileBankCard extends BaseActiveRecord
 
     public function isActive(): bool
     {
-        $status = ProfileBankCardStatusEnum::tryFrom($this->status);
-        return $status && in_array($status, ProfileBankCardStatusEnum::activeStatusList(), true);
+        return in_array($this->status, ProfileBankCardStatusEnum::activeStatusList(), true);
     }
 
     public function isDraft(): bool

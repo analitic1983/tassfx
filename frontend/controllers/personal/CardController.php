@@ -15,6 +15,7 @@ use common\modules\profile\factories\ProfileBankCardFactory;
 use common\modules\profile\helpers\BankCardUrlHelper;
 use common\modules\profile\helpers\ProfileUrlHelper;
 use common\modules\profile\models\ProfileBankCard;
+use common\modules\profile\models\search\ProfileBankCardSearch;
 use common\modules\profile\services\BankCardService;
 use Da\User\Filter\AccessRuleFilter;
 use frontend\controllers\AppController;
@@ -51,6 +52,7 @@ class CardController extends AppController
                     [
                         'allow'   => true,
                         'actions' => [
+                            'index',
                             'create-modal', 'update-modal', 'delete', 'save',
                             'front-photo', 'upload-front-photo', 'delete-front-photo',
                             'back-photo', 'upload-back-photo', 'delete-back-photo',
@@ -71,6 +73,23 @@ class CardController extends AppController
                 ]
             ]
         ];
+    }
+
+    /**
+     * Lists all Cards
+     *
+     * @return string
+     */
+    public function actionIndex(): string
+    {
+        $searchModel = new ProfileBankCardSearch();
+        $searchModel->user_id = $this->getCurrentUser()->id;
+        $dataProvider = $searchModel->search(Yii::$app->request->queryParams);
+
+        return $this->render('index', [
+            'searchModel' => $searchModel,
+            'dataProvider' => $dataProvider,
+        ]);
     }
 
     /**

@@ -37,10 +37,10 @@ enum ProfileBankCardStatusEnum: string
     public static function activeStatusList(): array
     {
         return [
-            self::STATUS_DRAFT,
-            self::STATUS_WAIT_FOR_APPROVE,
-            self::STATUS_APPROVED,
-            self::STATUS_DECLINED
+            self::STATUS_DRAFT->value,
+            self::STATUS_WAIT_FOR_APPROVE->value,
+            self::STATUS_APPROVED->value,
+            self::STATUS_DECLINED->value
         ];
     }
 }

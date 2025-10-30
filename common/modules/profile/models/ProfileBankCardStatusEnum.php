@@ -40,7 +40,7 @@ enum ProfileBankCardStatusEnum: string
             self::STATUS_DRAFT->value,
             self::STATUS_WAIT_FOR_APPROVE->value,
             self::STATUS_APPROVED->value,
-            self::STATUS_DECLINED->value
+            self::STATUS_DECLINED->value,
         ];
     }
 }

@@ -70,8 +70,8 @@ class CardController extends AppController
                     'delete-front-photo' => ['POST'],
                     'upload-back-photo'  => ['POST'],
                     'delete-back-photo'  => ['POST']
-                ]
-            ]
+                ],
+            ],
         ];
     }
 
@@ -151,7 +151,7 @@ class CardController extends AppController
         $this->bankCardService->deleteCard($bankCard);
         Yii::$app->session->setFlash('success', Yii::t('frontend', 'Bank card deleted'));
         return $this->jsonSuccess([
-            'redirect' => ProfileUrlHelper::showProfileBankCards()
+            'redirect' => ProfileUrlHelper::showProfileBankCards(),
         ]);
     }
 
@@ -199,7 +199,7 @@ class CardController extends AppController
                 ]
             ],
             'initialPreviewAsData' => true,
-            'message'              => Yii::t('frontend', "Uploaded")
+            'message'              => Yii::t('frontend', "Uploaded"),
         ]);
     }
 
@@ -264,7 +264,7 @@ class CardController extends AppController
                 ]
             ],
             'initialPreviewAsData' => true,
-            'message'              => Yii::t('frontend', "Uploaded")
+            'message'              => Yii::t('frontend', "Uploaded"),
         ]);
     }
 

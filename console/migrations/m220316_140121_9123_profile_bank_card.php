@@ -6,9 +6,9 @@ use yii\db\Migration;
 use yii\db\Query;
 
 /**
- * Class m220316_140121_9123_product_history
+ * Class m220316_140121_9123_profile_bank_card
  */
-class m220316_140121_9123_product_history extends Migration
+class m220316_140121_9123_profile_bank_card extends Migration
 {
     /**
      * {@inheritdoc}
